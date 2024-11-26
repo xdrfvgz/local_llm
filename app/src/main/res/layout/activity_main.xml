@@ -113,4 +113,12 @@
         app:layout_constraintTop_toTopOf="parent"
         tools:visibility="invisible" />
 
+    <androidx.recyclerview.widget.RecyclerView
+        android:id="@+id/messagesRecyclerView"
+        android:layout_width="match_parent"
+        android:layout_height="0dp"
+        android:layout_weight="1"
+        android:padding="8dp"
+        android:clipToPadding="false" />
+
 </androidx.constraintlayout.widget.ConstraintLayout>
