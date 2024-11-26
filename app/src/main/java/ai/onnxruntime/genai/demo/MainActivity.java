@@ -1,6 +1,8 @@
 package ai.onnxruntime.genai.demo;
 
 import androidx.appcompat.app.AppCompatActivity;
+import androidx.recyclerview.widget.LinearLayoutManager;
+import androidx.recyclerview.widget.RecyclerView;
 
 import android.app.Dialog;
 import android.content.Context;
@@ -44,6 +46,9 @@ public class MainActivity extends AppCompatActivity implements Consumer<String> 
     private TextView promptTV;
     private TextView progressText;
     private ImageButton settingsButton;
+    private RecyclerView messagesRecyclerView;
+    private MessagesAdapter messagesAdapter;
+    private List<Message> messagesList;
     private static final String TAG = "genai.demo.MainActivity";
     private int maxLength = 100;
     private float lengthPenalty = 1.0f;
@@ -67,10 +72,14 @@ public class MainActivity extends AppCompatActivity implements Consumer<String> 
         progressText = findViewById(R.id.progress_text);
         settingsButton = findViewById(R.id.idIBSettings);
 
-        // Trigger the download operation when the application is created
+        messagesRecyclerView = findViewById(R.id.messagesRecyclerView);
+        messagesList = new ArrayList<>();
+        messagesAdapter = new MessagesAdapter(messagesList);
+        messagesRecyclerView.setLayoutManager(new LinearLayoutManager(this));
+        messagesRecyclerView.setAdapter(messagesAdapter);
+
         try {
-            downloadModels(
-                    getApplicationContext());
+            downloadModels(getApplicationContext());
         } catch (GenAIException e) {
             throw new RuntimeException(e);
         }
@@ -89,27 +98,20 @@ public class MainActivity extends AppCompatActivity implements Consumer<String> 
             bottomSheet.show(getSupportFragmentManager(), "BottomSheet");
         });
 
-
         Consumer<String> tokenListener = this;
 
-        //enable scrolling and resizing of text boxes
         generatedTV.setMovementMethod(new ScrollingMovementMethod());
         getWindow().setSoftInputMode(WindowManager.LayoutParams.SOFT_INPUT_ADJUST_RESIZE);
 
-        // adding on click listener for send message button.
         sendMsgIB.setOnClickListener(new View.OnClickListener() {
             @Override
             public void onClick(View v) {
                 if (tokenizer == null) {
-                    // if user tries to submit prompt while model is still downloading, display a toast message.
                     Toast.makeText(MainActivity.this, "Model not loaded yet, please wait...", Toast.LENGTH_SHORT).show();
                     return;
                 }
 
-                // Checking if the message entered
-                // by user is empty or not.
                 if (userMsgEdt.getText().toString().isEmpty()) {
-                    // if the edit text is empty display a toast message.
                     Toast.makeText(MainActivity.this, "Please enter your message..", Toast.LENGTH_SHORT).show();
                     return;
                 }
@@ -117,16 +119,12 @@ public class MainActivity extends AppCompatActivity implements Consumer<String> 
                 String promptQuestion = userMsgEdt.getText().toString();
                 String promptQuestion_formatted = "<system>You are a helpful AI assistant. Answer in two paragraphs or less<|end|><|user|>"+promptQuestion+"<|end|>\n<assistant|>";
                 Log.i("GenAI: prompt question", promptQuestion_formatted);
-                setVisibility();
 
-                // Disable send button while responding to prompt.
-                sendMsgIB.setEnabled(false);
-                sendMsgIB.setAlpha(0.5f);
+                messagesList.add(new Message(promptQuestion, MessageType.SENT));
+                messagesAdapter.notifyItemInserted(messagesList.size() - 1);
+                messagesRecyclerView.scrollToPosition(messagesList.size() - 1);
 
-                promptTV.setText(promptQuestion);
-                // Clear Edit Text or prompt question.
                 userMsgEdt.setText("");
-                generatedTV.setText("");
 
                 new Thread(new Runnable() {
                     @Override
@@ -139,8 +137,6 @@ public class MainActivity extends AppCompatActivity implements Consumer<String> 
                             stream = tokenizer.createStream();
 
                             generatorParams = model.createGeneratorParams();
-                            //examples for optional parameters to format AI response
-                            // https://onnxruntime.ai/docs/genai/reference/config.html
                             generatorParams.setSearchOption("length_penalty", lengthPenalty);
                             generatorParams.setSearchOption("max_length", maxLength);
 
@@ -149,7 +145,6 @@ public class MainActivity extends AppCompatActivity implements Consumer<String> 
 
                             generator = new Generator(model, generatorParams);
 
-                            // try to measure average time taken to generate each token.
                             long startTime = System.currentTimeMillis();
                             long firstTokenTime = startTime;
                             long currentTime = startTime;
@@ -157,41 +152,36 @@ public class MainActivity extends AppCompatActivity implements Consumer<String> 
                             while (!generator.isDone()) {
                                 generator.computeLogits();
                                 generator.generateNextToken();
-                 
+
                                 int token = generator.getLastTokenInSequence(0);
 
-                                if (numTokens == 0) { //first token
+                                if (numTokens == 0) {
                                     firstTokenTime = System.currentTimeMillis();
                                 }
 
                                 tokenListener.accept(stream.decode(token));
 
-
-                                Log.i(TAG, "Generated token: " + token + ": " +  stream.decode(token));
+                                Log.i(TAG, "Generated token: " + token + ": " + stream.decode(token));
                                 Log.i(TAG, "Time taken to generate token: " + (System.currentTimeMillis() - currentTime)/ 1000.0 + " seconds");
                                 currentTime = System.currentTimeMillis();
                                 numTokens++;
                             }
                             long totalTime = System.currentTimeMillis() - firstTokenTime;
 
-                            float promptProcessingTime = (firstTokenTime - startTime)/ 1000.0f;
-                            float tokensPerSecond = (1000 * (numTokens -1)) / totalTime;
+                            float promptProcessingTime = (firstTokenTime - startTime) / 1000.0f;
+                            float tokensPerSecond = (1000 * (numTokens - 1)) / totalTime;
 
                             runOnUiThread(() -> {
                                 sendMsgIB.setEnabled(true);
                                 sendMsgIB.setAlpha(1.0f);
-
-                                // Display the token generation rate in a dialog popup
                                 showTokenPopup(promptProcessingTime, tokensPerSecond);
                             });
 
                             Log.i(TAG, "Prompt processing time (first token): " + promptProcessingTime + " seconds");
                             Log.i(TAG, "Tokens generated per second (excluding prompt processing): " + tokensPerSecond);
-                        }
-                        catch (GenAIException e) {
+                        } catch (GenAIException e) {
                             Log.e(TAG, "Exception occurred during model query: " + e.getMessage());
-                        }
-                        finally {
+                        } finally {
                             if (generator != null) generator.close();
                             if (encodedPrompt != null) encodedPrompt.close();
                             if (stream != null) stream.close();
@@ -218,7 +208,6 @@ public class MainActivity extends AppCompatActivity implements Consumer<String> 
     }
 
     private void downloadModels(Context context) throws GenAIException {
-
         final String baseUrl = "https://huggingface.co/microsoft/Phi-3-mini-4k-instruct-onnx/resolve/main/cpu_and_mobile/cpu-int4-rtn-block-32-acc-level-4/";
         List<String> files = Arrays.asList(
                 "added_tokens.json",
@@ -235,13 +224,10 @@ public class MainActivity extends AppCompatActivity implements Consumer<String> 
         List<Pair<String, String>> urlFilePairs = new ArrayList<>();
         for (String file : files) {
             if (!fileExists(context, file)) {
-                urlFilePairs.add(new Pair<>(
-                        baseUrl + file,
-                        file));
+                urlFilePairs.add(new Pair<>(baseUrl + file, file));
             }
         }
         if (urlFilePairs.isEmpty()) {
-            // Display a message using Toast
             Toast.makeText(this, "All files already exist. Skipping download.", Toast.LENGTH_SHORT).show();
             Log.d(TAG, "All files already exist. Skipping download.");
             model = new Model(getFilesDir().getPath());
@@ -252,9 +238,7 @@ public class MainActivity extends AppCompatActivity implements Consumer<String> 
         progressText.setText("Downloading...");
         progressText.setVisibility(View.VISIBLE);
 
-        Toast.makeText(this,
-                "Downloading model for the app... Model Size greater than 2GB, please allow a few minutes to download.",
-                Toast.LENGTH_SHORT).show();
+        Toast.makeText(this, "Downloading model for the app... Model Size greater than 2GB, please allow a few minutes to download.", Toast.LENGTH_SHORT).show();
 
         ExecutorService executor = Executors.newSingleThreadExecutor();
         executor.execute(() -> {
@@ -265,16 +249,12 @@ public class MainActivity extends AppCompatActivity implements Consumer<String> 
                     long pctDone = 100 * bytesRead / bytesTotal;
                     if (pctDone > lastPctDone) {
                         Log.d(TAG, "Downloading files: " + pctDone + "%");
-                        runOnUiThread(() -> {
-                            progressText.setText("Downloading: " + pctDone + "%");
-                        });
+                        runOnUiThread(() -> progressText.setText("Downloading: " + pctDone + "%"));
                     }
                 }
                 @Override
                 public void onDownloadComplete() {
                     Log.d(TAG, "All downloads completed.");
-
-                    // Last download completed, create SimpleGenAI
                     try {
                         model = new Model(getFilesDir().getPath());
                         tokenizer = model.createTokenizer();
@@ -286,7 +266,6 @@ public class MainActivity extends AppCompatActivity implements Consumer<String> 
                         e.printStackTrace();
                         throw new RuntimeException(e);
                     }
-
                 }
             });
         });
@@ -296,24 +275,20 @@ public class MainActivity extends AppCompatActivity implements Consumer<String> 
     @Override
     public void accept(String token) {
         runOnUiThread(() -> {
-            // Update and aggregate the generated text and write to text box.
-            CharSequence generated = generatedTV.getText();
-            generatedTV.setText(generated + token);
-            generatedTV.invalidate();
-            final int scrollAmount = generatedTV.getLayout().getLineTop(generatedTV.getLineCount()) - generatedTV.getHeight();
-            generatedTV.scrollTo(0, Math.max(scrollAmount, 0));
+            messagesList.add(new Message(token, MessageType.RECEIVED));
+            messagesAdapter.notifyItemInserted(messagesList.size() - 1);
+            messagesRecyclerView.scrollToPosition(messagesList.size() - 1);
         });
     }
 
     public void setVisibility() {
-        TextView view = (TextView) findViewById(R.id.user_text);
+        TextView view = findViewById(R.id.user_text);
         view.setVisibility(View.VISIBLE);
-        TextView botView = (TextView) findViewById(R.id.sample_text);
+        TextView botView = findViewById(R.id.sample_text);
         botView.setVisibility(View.VISIBLE);
     }
 
     private void showTokenPopup(float promptProcessingTime, float tokenRate) {
-
         final Dialog dialog = new Dialog(MainActivity.this);
         dialog.setContentView(R.layout.info_popup);
 
@@ -328,6 +303,4 @@ public class MainActivity extends AppCompatActivity implements Consumer<String> 
 
         dialog.show();
     }
-
-
 }
