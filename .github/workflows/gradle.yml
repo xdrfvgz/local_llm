@@ -22,11 +22,12 @@ jobs:
       run: |
         sudo apt update
         sudo apt install git zip unzip
-        git clone https://github.com/xdrfvgz/APIGardian
-        cd APIGardian/system_setup
-        bash ./install.sh
-        bash ./build_apk.sh
-        cd ..
+        #git clone https://github.com/xdrfvgz/APIGardian
+        git clone https://github.com/xdrfvgz/local_llm
+        #cd APIGardian/system_setup
+        #bash ./install.sh
+        #bash ./build_apk.sh
+        #cd ..
         cp app/build/outputs/apk/debug/app-debug.apk $HOME/
         
     - name: Find APK
