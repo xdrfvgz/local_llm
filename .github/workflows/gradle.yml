@@ -24,6 +24,7 @@ jobs:
         sudo apt install git zip unzip
         #git clone https://github.com/xdrfvgz/APIGardian
         git clone https://github.com/xdrfvgz/local_llm
+        cd local_llm
         gradle wrapper
         ./gradlew assembleDebug
         #cd APIGardian/system_setup
