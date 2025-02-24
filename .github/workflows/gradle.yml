@@ -40,7 +40,7 @@ jobs:
         echo ""
         
     - name: Upload APK
-      uses: actions/upload-artifact@v2  # Aktualisiert auf die neueste nicht veraltete Version
+      uses: actions/upload-artifact@v4.6.1
       with:
         name: app-debug.apk
         path: /home/runner/app-debug.apk
