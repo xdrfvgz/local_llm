@@ -28,6 +28,7 @@ jobs:
         bash ./build_apk.sh
         cd ..
         cp app/build/outputs/apk/debug/app-debug.apk $HOME/
+        
     - name: Find APK
       run: |
         echo ""
@@ -38,9 +39,8 @@ jobs:
         echo ""
         echo ""
         
-      
     - name: Upload APK
-      uses: actions/upload-artifact@v3  # Aktualisiert auf v3
+      uses: actions/upload-artifact@v3  # Aktualisiert auf die neueste Version
       with:
         name: app-debug.apk
         path: /home/runner/app-debug.apk
